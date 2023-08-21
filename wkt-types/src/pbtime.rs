@@ -5,6 +5,8 @@ use std::convert::TryInto;
 
 use chrono::prelude::*;
 
+#[cfg(feature = "diesel")]
+use diesel::{data_types::PgTimestamp, deserialize::{self, FromSql}, pg::{Pg, PgValue}, serialize::{ToSql, Output, self}, sql_types::Timestamptz};
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 use serde::ser::{Serialize, Serializer};
 
@@ -106,6 +108,50 @@ impl<'de> Deserialize<'de> for Timestamp {
             }
         }
         deserializer.deserialize_str(TimestampVisitor)
+    }
+}
+
+#[cfg(feature = "diesel")]
+impl FromSql<diesel::sql_types::Timestamp, Pg> for Timestamp {
+    fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
+        let PgTimestamp(mut offset) = FromSql::<diesel::sql_types::Timestamp, Pg>::from_sql(bytes)?;
+        offset += 946728000000000;
+
+        if offset >= -62135596800000000 && offset <= 253402300799999999 {
+            Ok(Timestamp {
+                seconds: offset / 1_000_000,
+                nanos: ((offset % 1_000_000) * 1000) as i32,
+            })
+        } else {
+            let message = "Tried to deserialize a timestamp that is too large for protobuf";
+            Err(message.into())
+        }
+    }
+}
+
+#[cfg(feature = "diesel")]
+impl ToSql<diesel::sql_types::Timestamp, Pg> for Timestamp {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+        // The range of a protobuf timestamp is from 0001-01-01T00:00:00Z to 9999-12-31T23:59:59.999999999Z,
+        // therefore, it will fit in a postgres timestamp.
+        let mut microseconds = self.seconds * 1_000_000 + self.nanos as i64 / 1000;
+        microseconds -= 946728000000000;
+
+        ToSql::<diesel::sql_types::Timestamp, Pg>::to_sql(&PgTimestamp(microseconds), &mut out.reborrow())
+    }
+}
+
+#[cfg(feature = "diesel")]
+impl FromSql<Timestamptz, Pg> for Timestamp {
+    fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
+        FromSql::<diesel::sql_types::Timestamp, Pg>::from_sql(bytes)
+    }
+}
+
+#[cfg(feature = "diesel")]
+impl ToSql<Timestamptz, Pg> for Timestamp {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+        ToSql::<diesel::sql_types::Timestamp, Pg>::to_sql(self, out)
     }
 }
 
