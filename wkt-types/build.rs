@@ -43,6 +43,8 @@ fn build(dir: &Path, proto: &str) {
         .type_attribute("google.protobuf.Duration","#[derive(serde_derive::Serialize, serde_derive::Deserialize)] #[serde(default)]")
         .type_attribute("google.protobuf.Empty","#[derive(serde_derive::Serialize, serde_derive::Deserialize)]")
         .type_attribute("google.protobuf.FieldMask","#[derive(serde_derive::Serialize, serde_derive::Deserialize)]")
+        .type_attribute("google.protobuf.Timestamp", "#[diesel(sql_type = diesel::sql_types::Timestamptz)]")
+        .type_attribute("google.protobuf.Timestamp", "#[derive(diesel::expression::AsExpression, diesel::deserialize::FromSqlRow)]")
         .file_descriptor_set_path(&descriptor_file)
         .out_dir(&out)
         .compile_protos(
